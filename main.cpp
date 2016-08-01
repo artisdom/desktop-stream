@@ -209,8 +209,8 @@ int main() {
         cerr << "Error: " << ec << ", error message: " << ec.message() << endl;
     };
     
-    http_server.default_resource["GET"]=[](HttpServer::Response& response, shared_ptr<HttpServer::Request> request) {
-        response << "HTTP/1.1 200 OK\r\nContent-Length: " << html.size() << "\r\n\r\n" << html;
+    http_server.default_resource["GET"]=[](shared_ptr<HttpServer::Response> response, shared_ptr<HttpServer::Request> request) {
+        *response << "HTTP/1.1 200 OK\r\nContent-Length: " << html.size() << "\r\n\r\n" << html;
     };
     
     thread server_thread([&http_server](){
