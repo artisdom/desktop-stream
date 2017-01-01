@@ -179,7 +179,6 @@ int main() {
         *response << "HTTP/1.1 200 OK\r\nContent-Length: " << html.size() << "\r\n\r\n" << html;
     };
     
-    ws_server.update_endpoints();
     http_server.on_upgrade=[&ws_server](shared_ptr<SimpleWeb::HTTP> socket, shared_ptr<HttpServer::Request> request) {
         auto connection=std::make_shared<WsServer::Connection>(socket);
         connection->method=std::move(request->method);
