@@ -36,7 +36,7 @@ const string html=R"RAW(<html>
 <script>
 var ws;
 window.onload=function(){
-  ws=new WebSocket('ws://)RAW"+ip_address+R"RAW(:8081/desktop');
+  ws=new WebSocket('ws://)RAW"+ip_address+R"RAW(:8080/desktop');
   ws.onmessage=function(evt){
     var blob = new Blob([evt.data], {type: 'application/octet-binary'});
 
@@ -60,9 +60,10 @@ window.onload=function(){
 </html>)RAW";
 
 int main() {
-    //WebSocket (WS)-server at port 8080 using 4 threads
-    HttpServer http_server(8080, 1);
-    WsServer ws_server(8081, 1);
+    HttpServer http_server;
+    http_server.config.port=8080;
+    http_server.io_service=std::make_shared<boost::asio::io_service>(); // To be on the safe side, we create the io_service here. 
+    WsServer ws_server;
     
     auto& desktop_endpoint=ws_server.endpoint["^/desktop/?$"];
     
@@ -103,7 +104,7 @@ int main() {
             });
             if(process.get_exit_status()==0) {
                 promise<void> promise;
-                ws_server.io_service->post([&] {
+                http_server.io_service->post([&] {
                     ifs.open(screenshot_path.string(), ifstream::in | ios::binary);
                     ifs.seekg(0, ios::end);
                     size_t length=ifs.tellg();
@@ -122,7 +123,7 @@ int main() {
                         connections=connections_skipped;
                     else
                         connections=desktop_endpoint.get_connections();
-                    for(auto a_connection: connections) {
+                    for(auto &a_connection: connections) {
                         bool skip_connection=false;
                         if(connections_receiving.count(a_connection)>0) {
                             skip_connection=true;
@@ -150,7 +151,7 @@ int main() {
         }
     });
     
-    desktop_endpoint.onopen=[&](shared_ptr<WsServer::Connection> connection) {
+    desktop_endpoint.on_open=[&](shared_ptr<WsServer::Connection> connection) {
         auto send_stream=make_shared<WsServer::SendStream>();
         
         send_stream->write(image_buffer.data(), image_buffer.size());
@@ -161,12 +162,12 @@ int main() {
         }, 130);
     };
     
-    desktop_endpoint.onclose=[&](shared_ptr<WsServer::Connection> connection, int status, const string& reason) {
+    desktop_endpoint.on_close=[&](shared_ptr<WsServer::Connection> connection, int status, const string& reason) {
         connections_receiving.erase(connection);
         connections_skipped.erase(connection);
     };
     
-    desktop_endpoint.onerror=[&](shared_ptr<WsServer::Connection> connection, const boost::system::error_code& ec) {
+    desktop_endpoint.on_error=[&](shared_ptr<WsServer::Connection> connection, const boost::system::error_code& ec) {
         connections_receiving.erase(connection);
         
         connections_skipped.erase(connection);
@@ -178,13 +179,19 @@ int main() {
         *response << "HTTP/1.1 200 OK\r\nContent-Length: " << html.size() << "\r\n\r\n" << html;
     };
     
-    thread server_thread([&http_server](){
-        //Start server
-        http_server.start();
-    });
+    ws_server.update_endpoints();
+    http_server.on_upgrade=[&ws_server](shared_ptr<SimpleWeb::HTTP> socket, shared_ptr<HttpServer::Request> request) {
+        auto connection=std::make_shared<WsServer::Connection>(socket);
+        connection->method=std::move(request->method);
+        connection->path=std::move(request->path);
+        connection->http_version=std::move(request->http_version);
+        connection->header=std::move(request->header);
+        connection->remote_endpoint_address=std::move(request->remote_endpoint_address);
+        connection->remote_endpoint_port=request->remote_endpoint_port;
+        ws_server.upgrade(connection);
+    };
     
-    ws_server.start();
-    server_thread.join();
+    http_server.start();
     update_image_thread.join();
     
     return 0;
