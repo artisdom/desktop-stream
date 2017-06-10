@@ -10,6 +10,7 @@
 #include <future>
 
 using namespace std;
+using namespace TinyProcessLib;
 
 const string ip_address="localhost";
 const boost::filesystem::path screenshot_directory(".");
