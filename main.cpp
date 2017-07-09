@@ -139,7 +139,7 @@ int main() {
                             send_stream->write(image_buffer.data(), image_buffer.size());
                             
                             connections_receiving.emplace(a_connection);
-                            ws_server.send(a_connection, send_stream, [&connections_receiving, a_connection](const boost::system::error_code &ec) {
+                            a_connection->send(send_stream, [&connections_receiving, a_connection](const boost::system::error_code &ec) {
                                 connections_receiving.erase(a_connection);
                             }, 130);
                         }
@@ -158,7 +158,7 @@ int main() {
         send_stream->write(image_buffer.data(), image_buffer.size());
         
         connections_receiving.emplace(connection);
-        ws_server.send(connection, send_stream, [&connections_receiving, connection](const boost::system::error_code &ec) {
+        connection->send(send_stream, [&connections_receiving, connection](const boost::system::error_code &ec) {
             connections_receiving.erase(connection);
         }, 130);
     };
@@ -180,8 +180,8 @@ int main() {
         *response << "HTTP/1.1 200 OK\r\nContent-Length: " << html.size() << "\r\n\r\n" << html;
     };
     
-    http_server.on_upgrade=[&ws_server](shared_ptr<SimpleWeb::HTTP> socket, shared_ptr<HttpServer::Request> request) {
-        auto connection=std::make_shared<WsServer::Connection>(socket);
+    http_server.on_upgrade=[&ws_server](unique_ptr<SimpleWeb::HTTP> &socket, shared_ptr<HttpServer::Request> request) {
+        auto connection=std::make_shared<WsServer::Connection>(std::move(socket));
         connection->method=std::move(request->method);
         connection->path=std::move(request->path);
         connection->http_version=std::move(request->http_version);
@@ -192,6 +192,7 @@ int main() {
     };
     
     http_server.start();
+    http_server.io_service->run();
     update_image_thread.join();
     
     return 0;
